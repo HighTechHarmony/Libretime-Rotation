@@ -55,7 +55,9 @@ The following tags are special:
 
 ## Known issues
 
-If playout is occuring when a rotation block is generated, there is a brief (.5 second or so) silence gap heard when Liquidsoap is restarted.
+Because libretime operates on 1 minute increments, there can be a bit of dead air before recovering from a cancelled show.
+
+If you cancel an existing show, it takes as much as 2 minutes for rotation to create and spin up a new show block. At the top of the next minute rotation will create a show, and that show will be scheduled to start the following minute. Not really sure how to get around this.
 
 ## Acknowlegements
 
