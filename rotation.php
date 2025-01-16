@@ -1332,7 +1332,6 @@ function dbInfoFromYaml($configFile)
 // Let's airtime know that stuff has changed
 function rabbitMqNotify($apiKey)
 {
-    $ini_file = parse_ini_file("/etc/airtime/airtime.conf", true);
     $url = "http://localhost/api/rabbitmq-do-push/format/json/api_key/" . $apiKey;
 
     echo "Contacting $url" . PHP_EOL;
