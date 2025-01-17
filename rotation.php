@@ -953,7 +953,9 @@ function gapComing($conn, $apiKey)
     }
 
     if (pg_num_rows($result)) {
-        echo "We are not currently in a show, but one is starting in a minute.\n";
+        foreach ($result as $row) {
+            echo "We are not currently in a show, but a show is starting in the next 1 min 30 sec. Show ID: " . $row["show_id"] . "\n";
+        }
         return 0;
     }
 
