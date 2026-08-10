@@ -966,84 +966,55 @@ function gapComing($conn, $apiKey)
 }
 
 
-
 /******************************************/
 // FUNCTION: intersperse()
-// DESCRIPTION: Intersperses a given list of station IDs into a list of songs
-// according to an (optional) given "frequency".  Frequency in this case is how many songs
-// should play between IDs.  If the given list of IDs is too short, it will maintain the frequency
-// as many IDs as possible, and subsequently only songs will be added.
+// DESCRIPTION: Intersperses a given list of station IDs into a list of songs.
+// It dynamically calculates the ratio to ensure neither songs nor IDs are ever dropped,
+// preserving the total playlist duration to prevent playout underruns.
 //
 // TAKES:
 // $songs - an array of song infos 
-// $ids - array of ID infos, 
-// $frequency - a optional frequency of ids to songs. If frequency is not provided, it defaults to 5.
-//              IF FREQUENCY IS 0, it is a special case and no IDs will play.
-//              IF FREQUENCY IS 1, it is a special case and is assumed there is only a single ID.
+// $ids - array of ID infos 
 // 
 // RETURNS: array of files infos
 /******************************************/
 
-function intersperse($songs, $ids, $frequency = 5)
+function intersperse($songs, $ids)
 {
     $result = array();
-    $added = 0;
-    $id_count = count($ids) - 1;
+    
+    // Fallbacks if either array is empty
+    if (empty($ids)) return $songs;
+    if (empty($songs)) return $ids;
+    
+    $total_songs = count($songs);
+    $total_ids = count($ids);
+    
+    $songs_added = 0;
+    $ids_added = 0;
+    
+    echo "intersperse() Merging " . $total_songs . " songs and " . $total_ids . " IDs\n";
 
-
-
-    // Handle the 0 frequency case
-    if ($frequency == 0) {
-        // Return only the songs
-        return $songs;
-    }
-
-    // Handle the single ID case
-    if ($frequency == 1) {
-        $result = $songs;
-        // Prepend a single ID to the front of the array
-        array_unshift($result, $ids[0]);
-        echo "intersperse() Added an ID\n";
-        return $result;
-    }
-
-    $frequency++;  // Fence post error correction
-
-    echo "intersperse() " . count($songs) . " songs and " . count($ids) . " IDs\n";
-
-
-    for ($i = 0; $i < (count($songs) + $added); $i++) {
-        //echo "intersperse() Count of songs+added is now ".count($songs)+$added."\n";
-        //echo "$i,$added\n";
-
-        if ($i % $frequency == 0)  // If it's a slot for ID
-        {
-            //$result[$i] = $ids[rand(0,count($ids)-1)]; 
-            //Treat the ID array as fixed. Previously randomized, and no repeating allowed.
-            if ($id_count >= 0)   // If there are IDs left
-            {
-                $result[$i] = $ids[$id_count--];
-                $added++;
-                echo "intersperse() Added an ID\n";
-            } else {
-                $result[$i] = $songs[$i - $added];
-                echo "intersperse() Added song because we are finished with IDs";
-                echo $i - $added;
-                echo "\n";
-            }
-        } else {
-            $result[$i] = $songs[$i - $added];
-            echo "intersperse() Added song ";
-            echo $i - $added;
-            echo "\n";
+    // Loop until both arrays are completely emptied into $result
+    while ($songs_added < $total_songs || $ids_added < $total_ids) {
+        
+        // Always lead with a song if available
+        if ($songs_added < $total_songs) {
+            $result[] = $songs[$songs_added++];
+        }
+        
+        // Calculate how many IDs should have been played by this point in the show
+        $expected_ids = ($songs_added / $total_songs) * $total_ids;
+        
+        // Catch up the IDs to match the expected ratio
+        while ($ids_added < $expected_ids && $ids_added < $total_ids) {
+            $result[] = $ids[$ids_added++];
+            echo "intersperse() Added an ID\n";
         }
     }
 
     return $result;
 }
-
-
-
 
 
 /*****************************************/
