@@ -3,6 +3,7 @@
 
 
 $configFile = '/etc/libretime/config.yml';
+$libretimeApiBaseUrl = getenv('LIBRETIME_API_BASE_URL') ?: 'http://127.0.0.1:8080';
 
 echo date("D M d, Y G:i a\n");
 
@@ -28,6 +29,7 @@ echo "
 
 
 // Attempt to load the api key from the configuration file
+$apiKey = null;
 try {
     $apiKey = apiKeyfromyaml($configFile);
 } catch (Exception $e) {
@@ -36,8 +38,8 @@ try {
     echo "Failed to parse YAML file: $configFile. RabbitMQ will not be notified for new files.\n";
 }
 
-if (!isset($apiKey)) {
-    echo "API key not found in config file. RabbitMQ will not be notified for new files.\n";
+if (!isset($apiKey) || $apiKey === null) {
+    echo "API key not found or invalid in config file. RabbitMQ will not be notified for new files.\n";
 }
 
 
@@ -55,6 +57,11 @@ if (!$conn) {
 
 if (count($argv) > 1) {
     if ($argv[1] == "--clean") {
+        if (!confirmCleanOperation()) {
+            echo "Aborting --clean operation.\n";
+            exit(1);
+        }
+
         $tables = array("cc_schedule", "cc_show_instances", "cc_show");
 
         foreach ($tables as $table) {
@@ -62,7 +69,7 @@ if (count($argv) > 1) {
             echo $query . PHP_EOL;
             query($conn, $query);
         }
-        rabbitMqNotify($apiKey);
+        rabbitMqNotify($apiKey, $libretimeApiBaseUrl);
         exit(0);
     } else {
         $str = <<<EOD
@@ -157,7 +164,7 @@ if ($gapStatus)  //Anything non-zero means we need to take action on an upcoming
     // Schedule all the files as show content
     insertIntoCcSchedule($conn, $files, $show_instance_id, $startsDateTime, $endsDateTime);
 
-    rabbitMqNotify($apiKey);
+    rabbitMqNotify($apiKey, $libretimeApiBaseUrl);
 
     echo PHP_EOL . "Show scheduled for $startsString (UTC)" . PHP_EOL;
 } else {
@@ -912,7 +919,7 @@ function gapComing($conn, $apiKey)
 
             // If we have an apiKey, notify RabbitMQ
             if ($apiKey) {
-                rabbitMqNotify();
+                rabbitMqNotify($apiKey, $libretimeApiBaseUrl);
             }
         }
 
@@ -1015,6 +1022,8 @@ function intersperse($songs, $ids)
 
     return $result;
 }
+
+
 
 
 /*****************************************/
@@ -1196,22 +1205,23 @@ function apiKeyfromyaml($configFile)
         if ($section == 'general') {
             if (preg_match('/^\s+api_key: (.*)/', $line, $matches)) {
 
-                $apiKey = $matches[1];
-                echo "API Key found: " . $apiKey . "\n";
-                return $apiKey;
+                // Keep compatibility with legacy and newer key formats (quoted/plain).
+                $apiKey = trim($matches[1]);
+                $apiKey = trim($apiKey, "\"'");
+
+                if ($apiKey !== '') {
+                    echo "API key found in config.\n";
+                    return $apiKey;
+                }
+
+                echo "API key entry is present but empty in config.\n";
+                return null;
             }
         }
     }
 
 
-    // If the apiKey looks like a valid key, return it
-    if (preg_match('/^[a-f0-9]{32}$/', $apiKey)) {
-        return $apiKey;
-    }
-
-    if ($apiKey === null) {
-        return null;
-    }
+    return null;
 }
 
 
@@ -1304,16 +1314,64 @@ function dbInfoFromYaml($configFile)
 }
 
 // Let's airtime know that stuff has changed
-function rabbitMqNotify($apiKey)
+function rabbitMqNotify($apiKey, $baseUrl = 'http://127.0.0.1:8080')
 {
-    $url = "http://localhost/api/rabbitmq-do-push/format/json/api_key/" . $apiKey;
+    if (!$apiKey) {
+        echo "rabbitMqNotify(): missing API key, skipping notification.\n";
+        return false;
+    }
+
+    $baseUrl = rtrim($baseUrl, '/');
+    $url = $baseUrl . "/api/rabbitmq-do-push/format/json/api_key/" . rawurlencode($apiKey);
 
     echo "Contacting $url" . PHP_EOL;
     $ch = curl_init($url);
-    // Output something about success or failure
+    // Capture endpoint response and validate success for troubleshooting.
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     $response = curl_exec($ch);
-    echo "Response: $response" . PHP_EOL;
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+
+    if ($response === false) {
+        echo "rabbitMqNotify() cURL failed: $curlError" . PHP_EOL;
+        curl_close($ch);
+        return false;
+    }
+
+    echo "rabbitMqNotify() HTTP $httpCode response: $response" . PHP_EOL;
+
+    if ($httpCode < 200 || $httpCode >= 300) {
+        echo "rabbitMqNotify() warning: non-2xx response from notify endpoint." . PHP_EOL;
+        curl_close($ch);
+        return false;
+    }
 
     curl_close($ch);
+    return true;
+}
+
+function confirmCleanOperation()
+{
+    echo "WARNING: --clean will delete all rows from cc_schedule, cc_show_instances, and cc_show.\n";
+
+    if (function_exists('posix_isatty') && !posix_isatty(STDIN)) {
+        echo "Refusing --clean in a non-interactive session. Run manually in a terminal.\n";
+        return false;
+    }
+
+    $prompt = "Type DELETE to confirm: ";
+    if (function_exists('readline')) {
+        $input = readline($prompt);
+    } else {
+        echo $prompt;
+        $input = fgets(STDIN);
+    }
+
+    if (trim((string)$input) !== 'DELETE') {
+        echo "Confirmation did not match.\n";
+        return false;
+    }
+
+    return true;
 }
