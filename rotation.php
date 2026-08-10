@@ -1,6 +1,7 @@
 <?php
 
 
+
 $configFile = '/etc/libretime/config.yml';
 
 echo date("D M d, Y G:i a\n");
@@ -499,7 +500,7 @@ function roundOutWithIDs($conn, $target_duration)
     //print_r($best_candidate_playlist);
 
 
-    return $playlist;
+    return $best_candidate_playlist;
 }
 
 /******************************************/
