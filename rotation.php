@@ -19,14 +19,17 @@ try {
     die('Failed to parse YAML file: ' . $e->getMessage());
 }
 
+// Do a quick check to see if we got something that looks like a password
+if (empty($dbInfo['password'])) {
+    die('Database password is missing in config file.');
+}
 echo "Got database info from config file.";
 echo "
     host: $dbInfo[host]
     port: $dbInfo[port]
     name: $dbInfo[name]
     user: $dbInfo[user]
-    password: $dbInfo[password]\n";
-
+";
 
 // Attempt to load the api key from the configuration file
 $apiKey = null;
